@@ -1,0 +1,53 @@
+services:
+  api:
+    build:
+      context: ./backend # Configura o contexto
+      dockerfile: Dockerfile # A partir do contexto, indica o caminho até o Dockerfile
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY} # Passa a variável de ambiente do host para o container
+      - DATABASE_URL=${DATABASE_URL}
+    ports:
+      - "80:80"
+    networks:
+      - app_network
+
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: dbadmin
+      POSTGRES_PASSWORD: Wolfros!#$123
+      POSTGRES_DB: chatbot_db
+    ports:
+      - 5435:5432 # Caso haja dois bancos (um na máquina e outro no container, é necessário alterar a porta externa, da esquerda para não haver conflito)
+    volumes:
+      - db_data:/var/lib/postgresql
+    healthcheck: # HealthCheck do banco
+      test: [
+          "CMD-SHELL",
+          "timeout 1 bash -c 'cat < /dev/null > /dev/tcp/localhost/5432' || exit 1", # Atenção: Porta precisa ser a mesma do banco de dados (nesse caso a 5432, porta interna do postgres)
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+
+  front:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      - API_URL=http://api:80 # Aponta a URL da API para o container do frontend (utiliza o nome do serviço "api" definido no docker-compose como hostname)
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+    networks:
+      - app_network
+
+volumes:
+  db_data:
+
+networks:
+  app_network:
+    driver: bridge

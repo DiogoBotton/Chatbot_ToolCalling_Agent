@@ -1,0 +1,17 @@
+[project]
+name = "src"
+version = "0.1.0"
+description = "YOUVISA"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.129.0",
+    "alembic>=1.18.4",
+    "pydantic-settings>=2.13.0",
+    "sqlalchemy>=2.0.46",
+    "langchain>=1.2.10",
+    "langchain-core>=1.2.14",
+    "langchain-community>=0.4.1",
+    "langchain-openai>=1.1.10",
+    "psycopg[binary]>=3.3.3",
+]
