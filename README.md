@@ -3,8 +3,10 @@
 TODOs:
 
 - Ainda não está ignorando .env locais mesmo com .dockerignore.
+- Melhorar processo de criação das tools e chamamentos de banco de dados.
 - Criar um README mais detalhado explicando o projeto, como rodar, etc.
-- Criar histórico de mensagens no banco de dados e passar como session_id/conversation_id para manter o contexto da conversa, ao invés de sempre o front precisar enviar o histórico.
+- Criar histórico de mensagens no banco de dados e passar como session_id/conversation_id para manter o contexto da conversa, ao invés de sempre o front precisar enviar o
+  histórico.
 
 #### Vídeo de apoio:
 
