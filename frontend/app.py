@@ -7,8 +7,8 @@ import os
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 # Configurações
-st.set_page_config(page_title="Seu assistente virtual YOUVISA 🤖", page_icon="🤖")
-st.title("Seu assistente virtual YOUVISA 🤖")
+st.set_page_config(page_title="Seu assistente virtual 🤖", page_icon="🤖")
+st.title("Seu assistente virtual 🤖")
 
 def request_agent(user_query: str):
     history = []

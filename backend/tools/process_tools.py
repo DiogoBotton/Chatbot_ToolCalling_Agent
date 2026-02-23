@@ -8,7 +8,7 @@ import random
 
 # Criar processo
 @tool
-def create_visa_process_tool(email: str) -> dict:
+def create_process_tool(email: str) -> dict:
     """Cria um novo processo de visto com status RECEBIDO. Necessário informar email."""
     
     db: Session = SessionLocal()
@@ -34,7 +34,7 @@ def create_visa_process_tool(email: str) -> dict:
 
 
 @tool
-def get_visa_process_tool(number: str) -> dict:
+def get_process_tool(number: str) -> dict:
     """Consulta um processo de visto pelo número do processo."""
     
     db: Session = SessionLocal()
@@ -51,7 +51,7 @@ def get_visa_process_tool(number: str) -> dict:
 
 
 @tool
-def update_visa_process_status_tool(number: str, status: str) -> dict:
+def update_process_status_tool(number: str, status: str) -> dict:
     """
     Atualiza o status de um processo de visto.
     Status permitidos: RECEBIDO, EM_ANALISE, PENDENTE, APROVADO, FINALIZADO.

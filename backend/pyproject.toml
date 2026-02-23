@@ -1,7 +1,7 @@
 [project]
 name = "src"
 version = "0.1.0"
-description = "YOUVISA"
+description = "Chatbot Tool Calling"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

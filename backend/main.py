@@ -8,7 +8,7 @@ load_dotenv()
 os.environ['OPENAI_API_KEY'] = os.getenv("OPENAI_API_KEY")
 
 app = FastAPI(
-    title="YOUVISA Chatbot API",
+    title="Chatbot Tool CallingAPI",
     docs_url="/docs",  # URL para disponibilização do Swagger UI
 )
 
