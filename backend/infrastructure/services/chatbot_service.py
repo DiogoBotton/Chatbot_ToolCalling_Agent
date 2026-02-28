@@ -70,7 +70,7 @@ class ChatbotService:
                     # Mensagem de chamada de ferramenta
                     new_messages.append(ConversationHistory(
                         role=MessageType.ASSISTANT,
-                        tool_calls=tool_call))
+                        tool_calls=[tool_call])) # Sempre salva tool_calls como uma lista
                     
                     try:
                         # Caso achar a ferramenta, chama a função passando os parâmetros (args) necessários
@@ -90,7 +90,6 @@ class ChatbotService:
                         tool_call_id=tool_call["id"]))
 
             # Finalmente, chama o modelo novamente (sem tools) passando toda a conversa (requisição para ferramenta + resposta) para gerar a resposta final
-            
             final_response = self.llm.invoke(messages)
             
             # Mensagem da resposta final do modelo, após chamar a ferramenta

@@ -5,9 +5,9 @@ from infrastructure.dtos.chat.message_history import MessageHistory
 from infrastructure.dtos.chat.message_result import MessageResult
 from features.chat.methods import chatbot, history
 
-router = APIRouter(tags=["Chat"])
+router = APIRouter(tags=["Chat"], prefix="/chat")
 
-@router.post("/chat", response_model=MessageResult)
+@router.post("/", response_model=MessageResult)
 async def chat_endpoint(command: chatbot.Command = Body(...),
                handler: chatbot.Chatbot = Depends()):
     return handler.execute(command)

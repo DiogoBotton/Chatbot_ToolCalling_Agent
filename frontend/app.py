@@ -1,5 +1,4 @@
 import streamlit as st
-from langchain_core.messages import AIMessage, HumanMessage
 import requests
 from enums import MessageType
 import os
@@ -10,55 +9,52 @@ API_URL = os.getenv("API_URL", "http://localhost:8000")
 st.set_page_config(page_title="Seu assistente virtual 🤖", page_icon="🤖")
 st.title("Seu assistente virtual 🤖")
 
-def request_agent(user_query: str):
-    history = []
-    for message in st.session_state.chat_history:
-        if isinstance(message, AIMessage):
-            history.append({
-                "type": MessageType.AI.value,
-                "message": message.content
-            })
-        elif isinstance(message, HumanMessage):
-            history.append({
-                "type": MessageType.HUMAN.value,
-                "message": message.content
-            })
-            
+if "conversation_id" not in st.session_state:
+    st.session_state.conversation_id = None
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+    
+def send_message(user_query: str):
     payload = {
         "input": user_query,
-        "chat_history": history
+        "conversation_id": st.session_state.conversation_id
     }
+
     response = requests.post(f"{API_URL}/chat", json=payload)
     response.raise_for_status()
-    
+
     data = response.json()
+
+    # Atualiza conversation_id se for nova
+    st.session_state.conversation_id = data["conversation_id"]
     
     return data["response"]
 
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = [AIMessage(content="Olá, sou o seu assistente virtual! Como posso ajudar você? :)")]
+def add_message(message: str, message_type: MessageType):
+    st.session_state.messages.append({
+        "type": message_type,
+        "message": message
+    })
 
-# Renderização do histórico de mensagens
-for message in st.session_state.chat_history:
-    if isinstance(message, AIMessage):
+for message in st.session_state.messages:
+    if message["type"] == "assistant":
         with st.chat_message("ai"):
-            st.write(message.content)
-    elif isinstance(message, HumanMessage):
+            st.write(message["message"])
+    elif message["type"] == "user":
         with st.chat_message("human"):
-            st.write(message.content)
+            st.write(message["message"])
 
-# Input para o usuário escrever            
 user_query = st.chat_input("Digite sua mensagem aqui...")
 
-# Adiciona o input ao chat
-if user_query is not None and len(user_query) != 0:
-    st.session_state.chat_history.append(HumanMessage(content=user_query))
-    
+if user_query:
+    # Renderiza imediatamente a mensagem do usuário (UX melhor)
     with st.chat_message("human"):
-        st.markdown(user_query)
-    
+        st.write(user_query)
+        add_message(user_query, MessageType.USER.value)
+
     with st.chat_message("ai"):
         with st.spinner("Gerando resposta..."):
-            resp = request_agent(user_query)
-        st.write(resp)
-    st.session_state.chat_history.append(AIMessage(content=resp))
+            ai_response = send_message(user_query)
+        st.write(ai_response)
+        add_message(ai_response, MessageType.ASSISTANT.value)

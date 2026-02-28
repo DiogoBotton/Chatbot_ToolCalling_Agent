@@ -11,6 +11,7 @@
       "module": "uvicorn",
       "args": ["main:app", "--reload"],
       "cwd": "${workspaceFolder}/backend", // Alterar nome da aplicação para "${workspaceFolder}/<nome_da_aplicação>/app", caso necessário
+      "envFile": "${workspaceFolder}/backend/.env", // Define .env específico para o backend
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend"
       },

@@ -49,7 +49,7 @@ class Chatbot(BaseHandler[Command, MessageResult]):
         
         for ch in conversation_history:
             if ch.role == MessageType.ASSISTANT:
-                history.append(AIMessage(ch.content, tool_calls=ch.tool_calls))
+                history.append(AIMessage(ch.content, tool_calls=ch.tool_calls or []))
             elif ch.role == MessageType.USER:
                 history.append(HumanMessage(ch.content))
             elif ch.role == MessageType.TOOL:

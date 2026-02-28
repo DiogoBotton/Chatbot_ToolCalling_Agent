@@ -8,7 +8,7 @@ from .abstractions.domain_base import DomainBase
 class ConversationHistory(DomainBase, Base):
     __tablename__ = 'conversation_histories'
     
-    content = Column(String, nullable=True) # Armazena o conteúdo da mensagem, seja do usuário, assistente ou resposta da ferramenta
+    content = Column(String, nullable=False) # Armazena o conteúdo da mensagem, seja do usuário, assistente ou resposta da ferramenta
     role = Column(Enum(MessageType), nullable=False)
     
     tool_calls = Column(JSONB, nullable=True) # Armazena as chamadas de ferramentas
@@ -17,7 +17,7 @@ class ConversationHistory(DomainBase, Base):
     conversation_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id'), nullable=False)
     conversation = relationship("Conversation", back_populates="conversation_histories")
 
-    def __init__(self, role: MessageType, content: str = None, tool_calls: dict = None, tool_call_id: str = None):
+    def __init__(self, role: MessageType, content: str = "", tool_calls: list = None, tool_call_id: str = None):
         self.role = role
         self.content = content
         self.tool_calls = tool_calls
