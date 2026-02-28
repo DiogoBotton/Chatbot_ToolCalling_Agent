@@ -7,7 +7,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY} # Passa a variável de ambiente do host para o container
       - DATABASE_URL=${DATABASE_URL}
     ports:
-      - "80:80"
+      - "5000:5000"
     networks:
       - app_network
 
@@ -37,9 +37,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     environment:
-      - API_URL=http://api:80 # Aponta a URL da API para o container do frontend (utiliza o nome do serviço "api" definido no docker-compose como hostname)
+      - API_URL=http://api:5000 # Aponta a URL da API para o container do frontend (utiliza o nome do serviço "api" definido no docker-compose como hostname)
     ports:
-      - "8501:8501"
+      - "80:80"
     depends_on:
       - api
     networks:

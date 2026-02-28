@@ -9,6 +9,7 @@ class User(DomainBase, Base):
     email = Column(String, nullable=False)
     
     processes = relationship("Process", back_populates="user")
+    conversations = relationship("Conversation", back_populates="user")
 
     def __init__(self, email: str):
         self.email = email

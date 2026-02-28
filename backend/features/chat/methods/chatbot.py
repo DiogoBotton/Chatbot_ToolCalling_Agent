@@ -1,9 +1,12 @@
 from typing import List
-from fastapi import Depends
+from uuid import UUID
+from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from domains.conversation import Conversation
+from domains.conversation_history import ConversationHistory
 from domains.enums.message_type import MessageType
-from services.chatbot_service import ChatbotService
+from infrastructure.services.chatbot_service import ChatbotService
 from infrastructure.dtos.chat.message_history import MessageHistory
 from infrastructure.dtos.chat.message_result import MessageResult
 from data.database import get_db
@@ -13,8 +16,7 @@ from . import BaseHandler
 # Request
 class Command(BaseModel):
     input: str
-    chat_history: List[MessageHistory]
-    #session_id: UUID | None = None
+    conversation_id: UUID | None = None
 
 # Handle
 class Chatbot(BaseHandler[Command, MessageResult]):
@@ -23,14 +25,40 @@ class Chatbot(BaseHandler[Command, MessageResult]):
         self.chatbotService = chatbotService
 
     def execute(self, request: Command):
-        # TODO: Refatorar este histórico para ser salvo no banco de dados e não enviado pelo cliente
-        history = []
-        for h in request.chat_history:
-            if h.type == MessageType.AI:
-                history.append(AIMessage(h.message))
-            else:
-                history.append(HumanMessage(h.message))
+        conversation = (self.db
+                        .query(Conversation)
+                        .filter(Conversation.id == request.conversation_id)
+                        .first()) if request.conversation_id else None
         
-        response = self.chatbotService.get_response(request.input, history)
+        if request.conversation_id and not conversation:
+            raise HTTPException(status_code=404, detail="Conversa não encontrada.")
+        
+        if not conversation:
+            conversation = Conversation()
+            self.db.add(conversation)
+            self.db.commit()
+            self.db.refresh(conversation)
+            
+        history = []
+        conversation_history: List[ConversationHistory] = (
+                                    self.db.query(ConversationHistory)
+                                    .filter(ConversationHistory.conversation_id == conversation.id)
+                                    .order_by(ConversationHistory.created_at.asc())
+                                    .all()
+                                ) if conversation.id else []
+        
+        for ch in conversation_history:
+            if ch.role == MessageType.ASSISTANT:
+                history.append(AIMessage(ch.content, tool_calls=ch.tool_calls))
+            elif ch.role == MessageType.USER:
+                history.append(HumanMessage(ch.content))
+            elif ch.role == MessageType.TOOL:
+                history.append(ToolMessage(ch.content, tool_call_id=ch.tool_call_id))
+        
+        response, new_messages = self.chatbotService.get_response(request.input, history)
+        
+        conversation.conversation_histories.append(ConversationHistory(role=MessageType.USER, content=request.input))
+        conversation.conversation_histories.extend(new_messages)
+        self.db.commit()
 
-        return MessageResult(response=response)
+        return MessageResult(response=response, conversation_id=conversation.id)

@@ -16,6 +16,6 @@ RUN uv sync --frozen
 # Copia código
 COPY . .
 
-EXPOSE 8501
+EXPOSE 80
 
-CMD ["uv", "run", "streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["uv", "run", "streamlit", "run", "app.py", "--server.port=80", "--server.address=0.0.0.0"]

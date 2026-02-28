@@ -1,7 +1,9 @@
 from typing import List
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
-from tools.process_tools import create_process_tool, get_process_tool, update_process_status_tool
+from domains.enums.message_type import MessageType
+from domains.conversation_history import ConversationHistory
+from infrastructure.tools.process_tools import create_process_tool, get_process_tool, update_process_status_tool
 
 class ChatbotService:
     def __init__(self):
@@ -42,7 +44,8 @@ class ChatbotService:
 
         return [system] + chat_history + [HumanMessage(content=user_query)]
 
-    def get_response(self, user_query: str, chat_history: List[BaseMessage]):
+    def get_response(self, user_query: str, chat_history: List[BaseMessage]) -> tuple[str, List[ConversationHistory]]:
+        new_messages = []
         messages = self.build_messages(user_query, chat_history)
 
         # Identifica se o modelo precisa chamar uma ferramenta ou não
@@ -64,6 +67,11 @@ class ChatbotService:
                 # Busca a função do tool_map (dicionário) pelo nome da ferramenta
                 tool_func = tool_map.get(tool_call["name"])
                 if tool_func:
+                    # Mensagem de chamada de ferramenta
+                    new_messages.append(ConversationHistory(
+                        role=MessageType.ASSISTANT,
+                        tool_calls=tool_call))
+                    
                     try:
                         # Caso achar a ferramenta, chama a função passando os parâmetros (args) necessários
                         tool_response = tool_func.invoke(tool_call["args"])
@@ -74,12 +82,29 @@ class ChatbotService:
                     messages.append(ToolMessage(
                         content=str(tool_response),
                         tool_call_id=tool_call["id"])) # Necessário o tool_call_id para o modelo entender de qual chamada de ferramenta aquela resposta se refere
+                    
+                    # Mensagem de resultado da ferramenta
+                    new_messages.append(ConversationHistory(
+                        role=MessageType.TOOL,
+                        content=str(tool_response),
+                        tool_call_id=tool_call["id"]))
 
             # Finalmente, chama o modelo novamente (sem tools) passando toda a conversa (requisição para ferramenta + resposta) para gerar a resposta final
+            
             final_response = self.llm.invoke(messages)
+            
+            # Mensagem da resposta final do modelo, após chamar a ferramenta
+            new_messages.append(ConversationHistory(
+                role=MessageType.ASSISTANT,
+                content=final_response.content))
 
             # Retorna a resposta final
-            return final_response.content
+            return final_response.content, new_messages
 
+        # Mensagem da resposta final do modelo, sem chamar a ferramenta
+        new_messages.append(ConversationHistory(
+            role=MessageType.ASSISTANT,
+            content=response.content))
+        
         # Caso o modelo não precise chamar uma ferramenta, retorna a resposta normalmente
-        return response.content
+        return response.content, new_messages
