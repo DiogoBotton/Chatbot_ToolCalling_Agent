@@ -7,7 +7,9 @@ from features.chat.methods import chatbot, history
 
 router = APIRouter(tags=["Chat"], prefix="/chat")
 
-@router.post("/", response_model=MessageResult)
+# TODO: Criar endpoint para criar conversation_id e retornar, para usar posteriormente no chat_endpoint, ao invés de criar a conversa diretamente no chat_endpoint.
+
+@router.post("/")
 async def chat_endpoint(command: chatbot.Command = Body(...),
                handler: chatbot.Chatbot = Depends()):
     return handler.execute(command)

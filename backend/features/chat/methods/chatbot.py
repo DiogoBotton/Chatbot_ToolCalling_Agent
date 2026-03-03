@@ -1,6 +1,7 @@
 from typing import List
 from uuid import UUID
 from fastapi import Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from domains.conversation import Conversation
@@ -55,10 +56,17 @@ class Chatbot(BaseHandler[Command, MessageResult]):
             elif ch.role == MessageType.TOOL:
                 history.append(ToolMessage(ch.content, tool_call_id=ch.tool_call_id))
         
-        response, new_messages = self.chatbotService.get_response(request.input, history)
+        generator, new_messages = self.chatbotService.get_response_stream(request.input, history)
         
-        conversation.conversation_histories.append(ConversationHistory(role=MessageType.USER, content=request.input))
-        conversation.conversation_histories.extend(new_messages)
-        self.db.commit()
+        def wrapped_generator():
+            full_response = ""
+            for chunk in generator:
+                full_response += chunk
+                yield chunk
+            
+            # Salva as novas mensagens no banco
+            conversation.conversation_histories.append(ConversationHistory(role=MessageType.USER, content=request.input))
+            conversation.conversation_histories.extend(new_messages)
+            self.db.commit()
 
-        return MessageResult(response=response, conversation_id=conversation.id)
+        return StreamingResponse(wrapped_generator(), media_type="text/plain")
