@@ -14,22 +14,36 @@ if "conversation_id" not in st.session_state:
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+
+def ensure_conversation_id() -> str:
+    if st.session_state.conversation_id is not None:
+        return st.session_state.conversation_id
+
+    response = requests.post(f"{API_URL}/conversations/", json={})
+    response.raise_for_status()
+    conversation_id = response.json()["id"]
+    st.session_state.conversation_id = conversation_id
+    return conversation_id
     
-def send_message(user_query: str):
+def stream_chat_response(user_query: str, placeholder) -> str:
+    conversation_id = ensure_conversation_id()
+
     payload = {
         "input": user_query,
-        "conversation_id": st.session_state.conversation_id
+        "conversation_id": conversation_id,
     }
 
-    response = requests.post(f"{API_URL}/chat", json=payload)
-    response.raise_for_status()
+    full_response = ""
+    with requests.post(f"{API_URL}/chat", json=payload, stream=True) as response:
+        response.raise_for_status()
+        for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
+            if not chunk:
+                continue
+            full_response += chunk
+            placeholder.write(full_response)
 
-    data = response.json()
-
-    # Atualiza conversation_id se for nova
-    st.session_state.conversation_id = data["conversation_id"]
-    
-    return data["response"]
+    return full_response
 
 def add_message(message: str, message_type: MessageType):
     st.session_state.messages.append({
@@ -54,7 +68,7 @@ if user_query:
         add_message(user_query, MessageType.USER.value)
 
     with st.chat_message("ai"):
+        placeholder = st.empty()
         with st.spinner("Gerando resposta..."):
-            ai_response = send_message(user_query)
-        st.write(ai_response)
+            ai_response = stream_chat_response(user_query, placeholder)
         add_message(ai_response, MessageType.ASSISTANT.value)

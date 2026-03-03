@@ -1,3 +1,4 @@
+import time
 from typing import List
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
@@ -113,8 +114,10 @@ class ChatbotService:
         response, messages = self.execute_llm_with_tools(messages, new_messages)
         
         if response:
-            def generator(): # TODO: Simular streaming mesmo quando não tem chamada de ferramenta, para não perder a experiência de streaming (for char in response.content)?
-                yield response.content
+            def generator():
+                for char in response.content:
+                    time.sleep(0.005) # Simula delay de streaming
+                    yield char
                                 
             new_messages.append(ConversationHistory(
                 role=MessageType.ASSISTANT,
