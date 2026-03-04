@@ -17,7 +17,7 @@ from . import BaseHandler
 # Request
 class Command(BaseModel):
     input: str
-    conversation_id: UUID | None = None
+    conversation_id: UUID
 
 # Handle
 class Chatbot(BaseHandler[Command, MessageResult]):
@@ -31,14 +31,8 @@ class Chatbot(BaseHandler[Command, MessageResult]):
                         .filter(Conversation.id == request.conversation_id)
                         .first()) if request.conversation_id else None
         
-        if request.conversation_id and not conversation:
-            raise HTTPException(status_code=404, detail="Conversa não encontrada.")
-        
         if not conversation:
-            conversation = Conversation()
-            self.db.add(conversation)
-            self.db.commit()
-            self.db.refresh(conversation)
+            raise HTTPException(status_code=404, detail="Conversa não encontrada.")
             
         history = []
         conversation_history: List[ConversationHistory] = (
