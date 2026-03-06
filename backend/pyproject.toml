@@ -14,4 +14,5 @@ dependencies = [
     "langchain-community>=0.4.1",
     "langchain-openai>=1.1.10",
     "psycopg[binary]>=3.3.3",
+    "uuid7>=0.1.0",
 ]
