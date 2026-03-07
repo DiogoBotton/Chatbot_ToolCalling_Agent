@@ -35,7 +35,7 @@ def stream_chat_response(user_query: str, placeholder) -> str:
     }
 
     full_response = ""
-    with requests.post(f"{API_URL}/chat", json=payload, stream=True) as response:
+    with requests.post(f"{API_URL}/chat/stream", json=payload, stream=True) as response:
         response.raise_for_status()
         for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
             if not chunk:

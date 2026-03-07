@@ -1,9 +1,8 @@
-import time
 from typing import List
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
-from domains.enums.message_type import MessageType
 from domains.conversation_history import ConversationHistory
+from domains.enums.message_type import MessageType
 from infrastructure.tools.process_tools import create_process_tool, get_process_tool, update_process_status_tool
 
 class ChatbotService:
@@ -51,80 +50,59 @@ class ChatbotService:
         system = SystemMessage(content=self.sys_prompt)
 
         return [system] + chat_history + [HumanMessage(content=user_query)]
-    
-    def execute_llm_with_tools(self, messages: List[BaseMessage], new_messages: List[ConversationHistory]):
-        # Identifica se o modelo precisa chamar uma ferramenta ou não
-        response = self.llm_with_tools.invoke(messages)
-        
-        # Mensagem da resposta final do modelo, sem chamar a ferramenta
-        if not response.tool_calls:
-            return response, messages
-        
-        # Mensagem de chamada de ferramentas
-        new_messages.append(ConversationHistory(
-            role=MessageType.ASSISTANT,
-            tool_calls=response.tool_calls))
-        
-        # Adiciona o response a lista de mensagens para o modelo saber que houve necessidade de chamar uma ferramenta
-        messages.append(response)
-        
-        # Caso o modelo precise chamar uma ferramenta
-        for tool_call in response.tool_calls:
-            
-            # Busca a função do tool_map (dicionário) pelo nome da ferramenta
-            tool_func = self.tool_map.get(tool_call["name"])
-            if tool_func:
-                try:
-                    # Caso achar a ferramenta, chama a função passando os parâmetros (args) necessários
-                    tool_response = tool_func.invoke(tool_call["args"])
-                except Exception as e:
-                    tool_response = {"error": str(e)}
-                    
-                # Adiciona o resultado da ferramenta como um ToolMessage para o modelo usar como contexto para responder a pergunta
-                messages.append(ToolMessage(
-                    content=str(tool_response),
-                    tool_call_id=tool_call["id"])) # Necessário o tool_call_id para o modelo entender de qual chamada de ferramenta aquela resposta se refere
-                
-                # Mensagem de resultado da ferramenta
-                new_messages.append(ConversationHistory(
-                    role=MessageType.TOOL,
-                    content=str(tool_response),
-                    tool_call_id=tool_call["id"]))
-        
-        return None, messages
-    
-    def execute_streaming(self, messages: List[BaseMessage], new_messages: List[ConversationHistory]):
-        full_content = ""
-        
-        # Finalmente, chama o modelo novamente (sem tools) passando toda a conversa (requisição para ferramenta + resposta) para gerar a resposta final
-        for chunk in self.llm.stream(messages):
-            if chunk.content:
-                full_content += chunk.content
-                yield chunk.content
-        
-        # Salva mensagem final do modelo
-        new_messages.append(ConversationHistory(
-            role=MessageType.ASSISTANT,
-            content=full_content))
 
-    def get_response_stream(self, user_query: str, chat_history: List[BaseMessage]) -> tuple[str, List[ConversationHistory]]:
-        # A edição de new_messages ocorre com referência de memória
-        new_messages = []
+    def get_response(self, user_query: str, chat_history: List[BaseMessage], new_messages: List[ConversationHistory]):
         messages = self.build_messages(user_query, chat_history)
 
-        response, messages = self.execute_llm_with_tools(messages, new_messages)
-        
-        if response:
-            def generator():
-                for char in response.content:
-                    time.sleep(0.005) # Simula delay de streaming
-                    yield char
-                                
+        # Identifica se o modelo precisa chamar uma ferramenta ou não
+        response = self.llm_with_tools.invoke(messages)
+
+        # Caso o modelo precise chamar uma ferramenta
+        if response.tool_calls:
+            
+            # Adiciona o response a lista de mensagens para o modelo saber que houve necessidade de chamar uma ferramenta
+            messages.append(response)
+            
+            # Mensagem de chamada de ferramentas
             new_messages.append(ConversationHistory(
                 role=MessageType.ASSISTANT,
-                content=response.content))
+                tool_calls=response.tool_calls))
+
+            for tool_call in response.tool_calls:
+                # Busca a função do tool_map (dicionário) pelo nome da ferramenta
+                tool_func = self.tool_map.get(tool_call["name"])
+                if tool_func:
+                    try:
+                        # Caso achar a ferramenta, chama a função passando os parâmetros (args) necessários
+                        tool_response = tool_func.invoke(tool_call["args"])
+                    except Exception as e:
+                        tool_response = {"error": str(e)}
+
+                    # Adiciona o resultado da ferramenta como um ToolMessage para o modelo usar como contexto para responder a pergunta
+                    messages.append(ToolMessage(
+                        content=str(tool_response),
+                        tool_call_id=tool_call["id"])) # Necessário o tool_call_id para o modelo entender de qual chamada de ferramenta aquela resposta se refere
+                    
+                    # Mensagem de resultado da ferramenta
+                    new_messages.append(ConversationHistory(
+                        role=MessageType.TOOL,
+                        content=str(tool_response),
+                        tool_call_id=tool_call["id"]))
+
+            # Finalmente, chama o modelo novamente (sem tools) passando toda a conversa (requisição para ferramenta + resposta) para gerar a resposta final
+            final_response = self.llm.invoke(messages)
+
+            # Salva mensagem final do modelo
+            new_messages.append(ConversationHistory(
+                role=MessageType.ASSISTANT,
+                content=final_response.content))
             
-            return generator(), new_messages
+            # Retorna a resposta final
+            return final_response.content
+
+        new_messages.append(ConversationHistory(
+            role=MessageType.ASSISTANT,
+            content=response.content))
         
-        # Caso precise de chamar uma ferramenta, gera a resposta final com o contexto atualizado (mensagem do modelo + resposta da ferramenta)
-        return self.execute_streaming(messages, new_messages), new_messages
+        # Caso o modelo não precise chamar uma ferramenta, retorna a resposta normalmente
+        return response.content
