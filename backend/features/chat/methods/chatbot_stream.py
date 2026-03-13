@@ -49,13 +49,18 @@ class Chatbot(BaseHandler[Command, MessageResult]):
             elif ch.role == MessageType.TOOL:
                 history.append(ToolMessage(ch.content, tool_call_id=ch.tool_call_id))
         
-        generator, new_messages = self.chatbotService.get_response_stream(request.input, history)
+        generator, new_messages, sources = self.chatbotService.get_response_stream(request.input, history)
         
         def wrapped_generator():
             full_response = ""
             for chunk in generator:
                 full_response += chunk
                 yield chunk
+            
+            # Após todo o conteúdo, envia as fontes como marcador final para o frontend
+            if sources:
+                import json
+                yield "\n\n__SOURCES__:" + json.dumps(sources, ensure_ascii=False)
             
             # Salva as novas mensagens no banco
             conversation.conversation_histories.append(ConversationHistory(role=MessageType.USER, content=request.input))
