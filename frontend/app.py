@@ -1,3 +1,4 @@
+import json
 import streamlit as st
 import requests
 from enums import MessageType
@@ -26,7 +27,7 @@ def ensure_conversation_id() -> str:
     st.session_state.conversation_id = conversation_id
     return conversation_id
     
-def stream_chat_response(user_query: str, placeholder) -> str:
+def stream_chat_response(user_query: str, response_placeholder, reasoning_placeholder) -> str:
     conversation_id = ensure_conversation_id()
 
     payload = {
@@ -34,14 +35,21 @@ def stream_chat_response(user_query: str, placeholder) -> str:
         "conversation_id": conversation_id,
     }
 
+    full_reasoning = ""
     full_response = ""
+
     with requests.post(f"{API_URL}/chat/stream", json=payload, stream=True) as response:
         response.raise_for_status()
-        for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
-            if not chunk:
+        for line in response.iter_lines(decode_unicode=True):
+            if not line:
                 continue
-            full_response += chunk
-            placeholder.write(full_response)
+            data = json.loads(line)
+            if data["type"] == "reasoning":
+                full_reasoning += data["content"]
+                reasoning_placeholder.expander("🧠 Raciocínio do modelo", expanded=True).markdown(full_reasoning)
+            elif data["type"] == "text":
+                full_response += data["content"]
+                response_placeholder.write(full_response)
 
     return full_response
 
@@ -68,7 +76,8 @@ if user_query:
         add_message(user_query, MessageType.USER.value)
 
     with st.chat_message("ai"):
-        placeholder = st.empty()
+        reasoning_placeholder = st.empty()
+        response_placeholder = st.empty()
         with st.spinner("Gerando resposta..."):
-            ai_response = stream_chat_response(user_query, placeholder)
+            ai_response = stream_chat_response(user_query, response_placeholder, reasoning_placeholder)
         add_message(ai_response, MessageType.ASSISTANT.value)

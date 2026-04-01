@@ -1,3 +1,4 @@
+import json
 import time
 from typing import List, Literal
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
@@ -8,6 +9,8 @@ from infrastructure.tools.process_tools import create_process_tool, get_process_
 
 class ChatbotService:
     def __init__(self):
+        # OBS. Mesmo especificando no prompt, alguns modelos não raciocinam em português, isso depende do modelo utilizado. 
+        # O gpt-5.4-mini por exemplo, não segue essa orientação do prompt.
         self.sys_prompt = """
             Você é um assistente especializado em processos de visto.
     
@@ -19,6 +22,10 @@ class ChatbotService:
             Sempre utilize as ferramentas disponíveis para executar ações.
             Nunca invente respostas.
             Pode responder outras perguntas também.
+
+            IMPORTANTE: Você DEVE raciocinar, pensar e escrever seu raciocínio EXCLUSIVAMENTE em português brasileiro.
+            Isso inclui todo o processo de pensamento, análise e conclusões intermediárias.
+            NUNCA use inglês no raciocínio, mesmo que a pergunta seja em outro idioma.
             """
         self.llm, self.llm_with_tools = self.model_openai()
         
@@ -35,6 +42,16 @@ class ChatbotService:
         Retorna o modelo normal e o modelo com as ferramentas acopladas (bind_tools).
             - O modelo normal é utilizado para responder perguntas simples, que não precisam de ferramentas.
             - O modelo com ferramentas acopladas é utilizado para identificar quando o modelo precisa chamar uma ferramenta e qual ferramenta chamar.
+            
+        Para raciocínio é necessário configurar o parâmetro reasoning (ou reasoning_effort) para que o modelo envie blocos 
+        de raciocínio durante a resposta.
+        
+        O parâmetro output_version="responses/v1" é necessário para acessar a Responses API, que é a única que atualmente 
+        suporta o raciocínio em blocos.
+        
+        O paramêtro summary dentro de reasoning é para configurar o nível de detalhamento do raciocínio, pode ser auto, detailed ou none. 
+        O auto é o padrão e o modelo decide o quanto de raciocínio enviar, o detailed força o modelo a enviar todo o raciocínio em blocos separados 
+        e o none desativa o envio de blocos de raciocínio.
         """
         llm = AzureChatOpenAI(model_name=model_name,
                               temperature=temperature,
@@ -42,7 +59,7 @@ class ChatbotService:
                               #reasoning_effort=reasoning_effort,
                               reasoning={
                                   "effort": reasoning_effort,
-                                  "summary": "auto"
+                                  "summary": "auto" # none | auto | detailed
                               },
                               output_version="responses/v1",
                               max_retries=2)
@@ -67,7 +84,6 @@ class ChatbotService:
         # Identifica se o modelo precisa chamar uma ferramenta ou não
         response = self.llm_with_tools.invoke(messages)
         
-        # Mensagem da resposta final do modelo, sem chamar a ferramenta
         if not response.tool_calls:
             # Exibe uso de tokens 
             # Exemplo: {'input_tokens': 347, 'output_tokens': 137, 'total_tokens': 484, 'input_token_details': {'cache_read': 0}, 'output_token_details': {'reasoning': 79}})
@@ -106,34 +122,61 @@ class ChatbotService:
                     tool_call_id=tool_call["id"]))
         
         return None, messages
-    
+
+    def _chunk(self, chunk_type: str, content: str) -> str:
+        """Serializa um chunk como JSON line para o frontend."""
+        return json.dumps({"type": chunk_type, "content": content}, ensure_ascii=False) + "\n"
+
+    # Aqui acontece streaming real, de raciocinio e resposta final do modelo.
     def execute_streaming(self, messages: List[BaseMessage], new_messages: List[ConversationHistory]):
         full_content = ""
-        full_reasoning_content = ""
-        
-        # Finalmente, chama o modelo novamente (sem tools) passando toda a conversa (requisição para ferramenta + resposta) para gerar a resposta final
+
         for chunk in self.llm.stream(messages):
-            for block in chunk.content:
-                if block['type'] == 'reasoning':
-                    for summary in block["summary"]:
-                        full_reasoning_content += summary
-                        yield summary
-                elif block['type'] == 'text':
-                    for chunk_txt in block["text"]:
-                        full_content += chunk_txt
-                        yield chunk_txt
-        
-        # Salva mensagem final do modelo
+            if not chunk.content:
+                continue
+            if isinstance(chunk.content, str):
+                full_content += chunk.content
+                yield self._chunk("text", chunk.content)
+            else:
+                for block in chunk.content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") == "reasoning":
+                        for summary in block.get("summary", []):
+                            text = summary.get("text", "") if isinstance(summary, dict) else str(summary)
+                            if text:
+                                yield self._chunk("reasoning", text)
+                    elif block.get("type") == "text":
+                        text = block.get("text", "")
+                        if text:
+                            full_content += text
+                            yield self._chunk("text", text)
+
         new_messages.append(ConversationHistory(
             role=MessageType.ASSISTANT,
             content=full_content))
 
+    # Função utilizada pela simulação de streaming
     def _extract_text(self, content) -> str:
         """Extrai só o texto da resposta, ignorando blocos de raciocínio.
         Necessário pois a Responses API retorna content como lista de blocos."""
         if isinstance(content, list):
             return "".join(block["text"] for block in content if block.get("type") == "text")
         return content or ""
+    
+    # Função utilizada pela simulação de streaming
+    def _extract_reasoning(self, content) -> str:
+        """Extrai o texto de raciocínio dos blocos da Responses API."""
+        if not isinstance(content, list):
+            return ""
+        parts = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "reasoning":
+                for summary in block.get("summary", []):
+                    text = summary.get("text", "") if isinstance(summary, dict) else str(summary)
+                    if text:
+                        parts.append(text)
+        return "".join(parts)
 
     def get_response_stream(self, user_query: str, chat_history: List[BaseMessage]) -> tuple[str, List[ConversationHistory]]:
         # A edição de new_messages ocorre com referência de memória
@@ -144,20 +187,21 @@ class ChatbotService:
         
         if response:
             def generator():
-                for block in response.content:
-                    if block['type'] == 'reasoning':
-                        for summary in block["summary"]:
-                            time.sleep(0.005) # Simula delay de streaming
-                            yield summary
-                    elif block['type'] == 'text':
-                        for chunk_txt in block["text"]:
-                            time.sleep(0.005) # Simula delay de streaming
-                            yield chunk_txt
-                                
+                """
+                Esta função generator apenas simula o streaming, pega o texto inteiro e retorna palavra por palavra com yield.
+                """
+                for word in self._extract_reasoning(response.content).split():
+                    time.sleep(0.015)
+                    yield self._chunk("reasoning", word + " ")
+
+                for char in self._extract_text(response.content):
+                    time.sleep(0.005)
+                    yield self._chunk("text", char)
+
             new_messages.append(ConversationHistory(
                 role=MessageType.ASSISTANT,
                 content=self._extract_text(response.content)))
-            
+
             return generator(), new_messages
         
         # Caso precise de chamar uma ferramenta, gera a resposta final com o contexto atualizado (mensagem do modelo + resposta da ferramenta)
