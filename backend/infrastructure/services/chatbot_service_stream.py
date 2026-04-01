@@ -39,7 +39,11 @@ class ChatbotService:
         llm = AzureChatOpenAI(model_name=model_name,
                               temperature=temperature,
                               api_version="2025-04-01-preview",
-                              reasoning_effort=reasoning_effort,
+                              #reasoning_effort=reasoning_effort,
+                              reasoning={
+                                  "effort": reasoning_effort,
+                                  "summary": "auto"
+                              },
                               output_version="responses/v1",
                               max_retries=2)
         
@@ -65,6 +69,9 @@ class ChatbotService:
         
         # Mensagem da resposta final do modelo, sem chamar a ferramenta
         if not response.tool_calls:
+            # Exibe uso de tokens 
+            # Exemplo: {'input_tokens': 347, 'output_tokens': 137, 'total_tokens': 484, 'input_token_details': {'cache_read': 0}, 'output_token_details': {'reasoning': 79}})
+            print(response.usage_metadata)
             return response, messages
         
         # Mensagem de chamada de ferramentas
@@ -102,13 +109,14 @@ class ChatbotService:
     
     def execute_streaming(self, messages: List[BaseMessage], new_messages: List[ConversationHistory]):
         full_content = ""
+        full_reasoning_content = ""
         
         # Finalmente, chama o modelo novamente (sem tools) passando toda a conversa (requisição para ferramenta + resposta) para gerar a resposta final
         for chunk in self.llm.stream(messages):
             for block in chunk.content:
                 if block['type'] == 'reasoning':
                     for summary in block["summary"]:
-                        full_content += summary
+                        full_reasoning_content += summary
                         yield summary
                 elif block['type'] == 'text':
                     for chunk_txt in block["text"]:
