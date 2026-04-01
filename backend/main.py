@@ -6,7 +6,12 @@ from dotenv import load_dotenv
 import os
 load_dotenv()
 
+# OpenAI (GPT)
 os.environ['OPENAI_API_KEY'] = os.getenv("OPENAI_API_KEY")
+
+# Azure OpenAI
+os.environ['AZURE_OPENAI_API_KEY'] = os.getenv("AZURE_OPENAI_API_KEY")
+os.environ['AZURE_OPENAI_ENDPOINT'] = os.getenv("AZURE_OPENAI_ENDPOINT")
 
 app = FastAPI(
     title="Chatbot Tool CallingAPI",

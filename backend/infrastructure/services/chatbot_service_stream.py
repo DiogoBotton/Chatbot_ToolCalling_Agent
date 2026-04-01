@@ -1,6 +1,6 @@
 import time
-from typing import List
-from langchain_openai import ChatOpenAI
+from typing import List, Literal
+from langchain_openai import AzureChatOpenAI, ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from domains.enums.message_type import MessageType
 from domains.conversation_history import ConversationHistory
@@ -11,15 +11,14 @@ class ChatbotService:
         self.sys_prompt = """
             Você é um assistente especializado em processos de visto.
     
-            Você só pode:
+            Você pode:
             - Criar processo de visto
             - Consultar processo de visto
             - Atualizar status de processo de visto
     
             Sempre utilize as ferramentas disponíveis para executar ações.
             Nunca invente respostas.
-            Se a pergunta não estiver relacionada a processos de visto,
-            responda: "Só posso ajudar com processos de visto." e diga que tipo de processos que você pode fazer.
+            Pode responder outras perguntas também.
             """
         self.llm, self.llm_with_tools = self.model_openai()
         
@@ -30,15 +29,23 @@ class ChatbotService:
                 "update_process_status_tool": update_process_status_tool
             }
 
-    def model_openai(self, model_name = "gpt-4o-mini", temperature = 0):
+    def model_openai(self, model_name = "gpt-5.4-mini", temperature = 0, reasoning_effort: Literal["none", "low", "medium", "high", "xhigh"] = "high"):
         """
         Acessa o modelo do Chat GPT pela API.
         Retorna o modelo normal e o modelo com as ferramentas acopladas (bind_tools).
             - O modelo normal é utilizado para responder perguntas simples, que não precisam de ferramentas.
             - O modelo com ferramentas acopladas é utilizado para identificar quando o modelo precisa chamar uma ferramenta e qual ferramenta chamar.
         """
-        llm = ChatOpenAI(model = model_name, temperature = temperature)
-        llm_with_tools = llm.bind_tools([create_process_tool, get_process_tool, update_process_status_tool])
+        llm = AzureChatOpenAI(model_name=model_name,
+                              temperature=temperature,
+                              api_version="2025-04-01-preview",
+                              reasoning_effort=reasoning_effort,
+                              output_version="responses/v1",
+                              max_retries=2)
+        
+        # llm = ChatOpenAI(model = model_name, temperature = temperature, reasoning_effort=reasoning_effort, max_retries=2, output_version="responses/v1")
+        llm_with_tools = llm.bind_tools([create_process_tool, get_process_tool, update_process_status_tool],
+                                        parallel_tool_calls=False) # -> Força chamadas sequenciais, isto pois temos apenas um ciclo de chamada de ferramentas (não é necessário caso for um agente)
         return llm, llm_with_tools
 
     def build_messages(self, user_query: str, chat_history: List[BaseMessage]):
@@ -98,14 +105,27 @@ class ChatbotService:
         
         # Finalmente, chama o modelo novamente (sem tools) passando toda a conversa (requisição para ferramenta + resposta) para gerar a resposta final
         for chunk in self.llm.stream(messages):
-            if chunk.content:
-                full_content += chunk.content
-                yield chunk.content
+            for block in chunk.content:
+                if block['type'] == 'reasoning':
+                    for summary in block["summary"]:
+                        full_content += summary
+                        yield summary
+                elif block['type'] == 'text':
+                    for chunk_txt in block["text"]:
+                        full_content += chunk_txt
+                        yield chunk_txt
         
         # Salva mensagem final do modelo
         new_messages.append(ConversationHistory(
             role=MessageType.ASSISTANT,
             content=full_content))
+
+    def _extract_text(self, content) -> str:
+        """Extrai só o texto da resposta, ignorando blocos de raciocínio.
+        Necessário pois a Responses API retorna content como lista de blocos."""
+        if isinstance(content, list):
+            return "".join(block["text"] for block in content if block.get("type") == "text")
+        return content or ""
 
     def get_response_stream(self, user_query: str, chat_history: List[BaseMessage]) -> tuple[str, List[ConversationHistory]]:
         # A edição de new_messages ocorre com referência de memória
@@ -116,13 +136,19 @@ class ChatbotService:
         
         if response:
             def generator():
-                for char in response.content:
-                    time.sleep(0.005) # Simula delay de streaming
-                    yield char
+                for block in response.content:
+                    if block['type'] == 'reasoning':
+                        for summary in block["summary"]:
+                            time.sleep(0.005) # Simula delay de streaming
+                            yield summary
+                    elif block['type'] == 'text':
+                        for chunk_txt in block["text"]:
+                            time.sleep(0.005) # Simula delay de streaming
+                            yield chunk_txt
                                 
             new_messages.append(ConversationHistory(
                 role=MessageType.ASSISTANT,
-                content=response.content))
+                content=self._extract_text(response.content)))
             
             return generator(), new_messages
         

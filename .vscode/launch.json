@@ -12,10 +12,38 @@
       "args": ["main:app", "--reload"],
       "cwd": "${workspaceFolder}/backend", // Alterar nome da aplicação para "${workspaceFolder}/<nome_da_aplicação>/app", caso necessário
       "envFile": "${workspaceFolder}/backend/.env", // Define .env específico para o backend
+
+      // Define o Python específico para o backend:
+      
+      // Linux
+      //"python": "${workspaceFolder}/backend/.venv/bin/python",
+      
+      // Windows
+      "python": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
+
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend"
       },
       "jinja": false
+    },
+    {
+      "name": "Debuger: Streamlit",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "uv run streamlit run app.py",
+      "cwd": "${workspaceFolder}/frontend",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/frontend"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full Stack (FastAPI + Streamlit)",
+      "configurations": [
+        "Debuger: FastAPI",
+        "Debuger: Streamlit"
+      ]
     }
   ]
 }
